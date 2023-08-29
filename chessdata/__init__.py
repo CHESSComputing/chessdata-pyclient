@@ -4,7 +4,7 @@ import json
 import os
 import requests
 
-VERSION = '0.0.0'
+VERSION = 'PACKAGE_VERSION'
 
 # URL = 'https://chessdata.classe.cornell.edu:8243'
 URL = 'https://chessdata.classe.cornell.edu:8244'
