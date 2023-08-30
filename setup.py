@@ -20,7 +20,7 @@ setuptools.setup(
     name='chessdata-pyclient',
     version=VERSION,
     author='Keara Soloway',
-    author_email='kls286 at cornell dot edu',
+    author_email='kls286@cornell.edu',
     description='Python library for interacting with the CHESS metadata service',
     long_description=long_description,
     long_description_content_type='text/markdown',
