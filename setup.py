@@ -10,7 +10,8 @@ to run tests : python setup.py test
 
 import os
 import setuptools
-from chessdata import VERSION
+
+VERSION = 'PACKAGE_VERSION'
 
 with open('README.md', 'r') as fh:
     long_description = fh.read()
