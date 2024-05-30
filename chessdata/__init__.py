@@ -7,7 +7,7 @@ import requests
 # URL = 'https://chessdata.classe.cornell.edu:8243'
 URL = 'https://chessdata.classe.cornell.edu:8244'
 
-def get_contents(file):
+def get_ticket(file):
     """Return the contents of a file as a byte string.
 
     :param file: name of a file
@@ -19,6 +19,11 @@ def get_contents(file):
     with open(file, 'rb') as f:
         contents = f.read()
     return contents
+
+def get_token(ticket):
+    """Get the kerberos token from a ticket"""
+    # foxden token create read/write
+    return 'bla'
 
 def query(query, krb_file='~/krb5_ccache', url=URL):
     """Search the chess metadata database and return matching records
@@ -35,16 +40,18 @@ def query(query, krb_file='~/krb5_ccache', url=URL):
     :return: list of matching records
     :rtype: list[dict]
     """
+    ticket = get_ticket(krb_file)
     resp = requests.post(
         f'{url}/search',
         data={
             'query': query,
             'name': os.path.basename(krb_file),
-            'ticket': get_contents(krb_file),
+            'ticket': ticket,
             'client': 'cli'
         },
         headers={
-            'Content-Type': 'application/x-www-form-urlencoded'
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': f'bearer {get_token(ticket)}'
         }
     )
     return resp.json()
@@ -67,16 +74,18 @@ def insert(record, schema, krb_file='~/krb5_ccache', url=URL):
     :return: response from the CHESS metadata server
     :rtype: requests.Response
     """
+    ticket = get_ticket(krb_file)
     resp = requests.post(
         f'{url}/api',
         data={
             'record': get_contents(record),
             'SchemaName': schema,
             'name': os.path.basename(krb_file),
-            'ticket': get_contents(krb_file)
+            'ticket': ticket
         },
         headers={
-            'Content-Type': 'application/x-www-form-urlencoded'
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': f'bearer {get_token(ticket)}'
         }
     )
     return resp
