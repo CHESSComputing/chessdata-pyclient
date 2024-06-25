@@ -3,36 +3,60 @@
 import json
 import os
 import requests
+import warnings
 
-# URL = 'https://chessdata.classe.cornell.edu:8243'
-URL = 'https://chessdata.classe.cornell.edu:8244'
+URL = 'https://foxden-meta.classe.cornell.edu:8300'
 
-def get_ticket(file):
-    """Return the contents of a file as a byte string.
-
-    :param file: name of a file
-    :type file: str
-    :return: the contents of `file` as a byte str
-    :rtype: str
-    """
-    file = os.path.expanduser(file)
-    with open(file, 'rb') as f:
-        contents = f.read()
-    return contents
 
 def get_token(ticket):
-    """Get the kerberos token from a ticket"""
-    # foxden token create read/write
-    return 'bla'
+    """Get a foxden read token from a kerberos ticket.
 
-def query(query, krb_file='~/krb5_ccache', url=URL):
+    :param ticket: The name of a file containing a kerberos ticket, OR
+        the name of an environment variable containing the ticket
+        string, OR the ticket string.
+    :type ticket: string
+    :returns: Kerberos token
+    :rtype string
+    """
+    if str(ticket) in os.environ:
+        return os.environ[ticket]
+
+    ticket_file = os.path.expanduser(ticket)
+    if os.path.isfile(ticket_file):
+        from re import search
+        foxden_create_cmd = f'foxden token create read --kfile={ticket_file}'
+        with os.popen(foxden_create_cmd, 'r') as pipe:
+            out = pipe.read()
+        if not len(out) == 0:
+            token = search(r'(?P<token>[\S]+)').groups('token')
+        else:
+            foxden_view_cmd = f'foxden token view'
+            with os.popen(foxden_view_cmd, 'r') as pipe:
+                out = pipe.read()
+            token = search(r'AccessToken  :  (?P<token>[\S]+)',
+                           out).groups('token')[0]
+        return token
+    else:
+        # `ticket` is the ACTUAL ticket string
+        raise NotImplementedError
+
+
+def query(query, ticket='~/krb5_ccache', krb_file=None, url=URL):
     """Search the chess metadata database and return matching records
     as JSON
-                                                                                                                         
+
     :param query: query string to look up records
     :type query: str
-    :param krb_file: name of a Kerberos 5 credentials (ticket) cache
-        file, defults to '~/krb5_ccache'
+    :param ticket:
+    :type ticket:
+    :param ticket: The name of a file containing a kerberos ticket, OR
+        the name of an environment variable containing the ticket
+        string, OR the ticket string. Used to obtain a foxden read
+        token. Defults to '~/krb5_ccache'
+    :type ticket: string
+    :param krb_file: Deprecatued, use the `ticket` parameter
+        instead. Name of a Kerberos 5 credentials (ticket) cache
+        file. Defaults to None.
     :type krb_file: str, optional
     :param url: CHESS metadata server URL, defaults to
         'https://chessdata.classe.cornell.edu:8244'
@@ -40,52 +64,24 @@ def query(query, krb_file='~/krb5_ccache', url=URL):
     :return: list of matching records
     :rtype: list[dict]
     """
-    ticket = get_ticket(krb_file)
+    if krb_file is not None:
+        warnings.warn(
+            'Use of "krb_file" kwarg is deprecated; use "ticket" kwarg instead.',
+            DeprecationWarning)
+        ticket = krb_file
+
     resp = requests.post(
         f'{url}/search',
-        data={
-            'query': query,
-            'name': os.path.basename(krb_file),
-            'ticket': ticket,
-            'client': 'cli'
-        },
+        data=json.dumps(
+            {
+                'service_query':
+                {
+                    'query': query
+                }
+            }
+        ),
         headers={
-            'Content-Type': 'application/x-www-form-urlencoded',
             'Authorization': f'bearer {get_token(ticket)}'
         }
     )
     return resp.json()
-
-def insert(record, schema, krb_file='~/krb5_ccache', url=URL):
-    """Submit a new record to the metadata database.
-
-    :param record: name of a JSON file containing the record to be
-        submitted
-    :type record: str
-    :param schema: name of the schema against which the new record
-        will be validated
-    :type schema: str
-    :param krb_file: name of a Kerberos 5 credentials (ticket) cache
-        file, defults to '~/krb5_ccache'
-    :type krb_file: str, optional
-    :param url: CHESS metadata server URL, defaults to
-        'https://chessdata.classe.cornell.edu:8244'
-    :type url: str, optional
-    :return: response from the CHESS metadata server
-    :rtype: requests.Response
-    """
-    ticket = get_ticket(krb_file)
-    resp = requests.post(
-        f'{url}/api',
-        data={
-            'record': get_contents(record),
-            'SchemaName': schema,
-            'name': os.path.basename(krb_file),
-            'ticket': ticket
-        },
-        headers={
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': f'bearer {get_token(ticket)}'
-        }
-    )
-    return resp

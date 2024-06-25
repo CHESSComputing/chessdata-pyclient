@@ -12,8 +12,3 @@ Python library for interacting with the CHESS metadata service
   from chessdata import query
   records = query('{"beamline":"3a" "technique":"tomography"}')
   ```
-- Submit a new record to the CHESS metadata database from a file, `record.json`, under the `'test'` schema:
-  ```python
-  from chessdata import insert
-  insert('record.json', 'test')
-  ```
