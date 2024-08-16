@@ -81,7 +81,9 @@ def query(query, ticket='~/krb5_ccache', krb_file=None, url=URL):
             }
         ),
         headers={
-            'Authorization': f'bearer {get_token(ticket)}'
+            'Authorization': f'Bearer {get_token(ticket)}',
+            'Content-Type': 'application/json'
         }
     )
     return resp.json()
+
