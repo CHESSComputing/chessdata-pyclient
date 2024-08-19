@@ -7,41 +7,7 @@ import warnings
 
 URL = 'https://foxden-meta.classe.cornell.edu:8300'
 
-
-def get_token(ticket):
-    """Get a foxden read token from a kerberos ticket.
-
-    :param ticket: The name of a file containing a kerberos ticket, OR
-        the name of an environment variable containing the ticket
-        string, OR the ticket string.
-    :type ticket: string
-    :returns: Kerberos token
-    :rtype string
-    """
-    if str(ticket) in os.environ:
-        return os.environ[ticket]
-
-    ticket_file = os.path.expanduser(ticket)
-    if os.path.isfile(ticket_file):
-        from re import search
-        foxden_create_cmd = f'foxden token create read --kfile={ticket_file}'
-        with os.popen(foxden_create_cmd, 'r') as pipe:
-            out = pipe.read()
-        if not len(out) == 0:
-            token = search(r'(?P<token>[\S]+)').groups('token')
-        else:
-            foxden_view_cmd = f'foxden token view'
-            with os.popen(foxden_view_cmd, 'r') as pipe:
-                out = pipe.read()
-            token = search(r'AccessToken  :  (?P<token>[\S]+)',
-                           out).groups('token')[0]
-        return token
-    else:
-        # `ticket` is the ACTUAL ticket string
-        raise NotImplementedError
-
-
-def query(query, ticket='~/krb5_ccache', krb_file=None, url=URL):
+def query(query, kfile=None, url='https://foxden-meta.classe.cornell.edu:8300'):
     """Search the chess metadata database and return matching records
     as JSON
 
@@ -49,27 +15,17 @@ def query(query, ticket='~/krb5_ccache', krb_file=None, url=URL):
     :type query: str
     :param ticket:
     :type ticket:
-    :param ticket: The name of a file containing a kerberos ticket, OR
-        the name of an environment variable containing the ticket
-        string, OR the ticket string. Used to obtain a foxden read
-        token. Defults to '~/krb5_ccache'
-    :type ticket: string
-    :param krb_file: Deprecatued, use the `ticket` parameter
-        instead. Name of a Kerberos 5 credentials (ticket) cache
-        file. Defaults to None.
-    :type krb_file: str, optional
-    :param url: CHESS metadata server URL, defaults to
-        'https://chessdata.classe.cornell.edu:8244'
+    :param kfile: The name of a file containing a kerberos
+        ticket. Used to obtain a foxden read token with `foxden token
+        create --kfile=<kfile>` CLI if needed. Defults to `None`.
+    :type kfile: string
+    :param url: URL of foxden service to query, defaults to value of
+        `chessdata.URL` (which is, by default,
+        `'https://foxden-meta.classe.cornell.edu:8300'`).
     :type url: str, optional
     :return: list of matching records
     :rtype: list[dict]
     """
-    if krb_file is not None:
-        warnings.warn(
-            'Use of "krb_file" kwarg is deprecated; use "ticket" kwarg instead.',
-            DeprecationWarning)
-        ticket = krb_file
-
     resp = requests.post(
         f'{url}/search',
         data=json.dumps(
@@ -81,9 +37,130 @@ def query(query, ticket='~/krb5_ccache', krb_file=None, url=URL):
             }
         ),
         headers={
-            'Authorization': f'Bearer {get_token(ticket)}',
+            'Authorization': f'Bearer {get_token(scope="read", kfile=kfile)}',
             'Content-Type': 'application/json'
         }
     )
-    return resp.json()
+    return foxden_response_records(resp)
 
+def foxden_request_data(query):
+    """Return the data to include in the body of an HTTP request to
+    query a foxden service.
+
+    :param query: The user query for the foxden service
+    :type query: str
+    :returns: HTTP request data
+    :rtype: str
+    """
+    return json.dumps({'service_query': {'query': query}})
+
+def foxden_response_records(response):
+    """Return the list of records contained in the JSON response from
+    a foxden service.
+
+    :param response: A JSON response to an HTTP request to a foxden
+        service.
+    :type response: dict
+    :returns: The data records included in the response, if any.
+    :rtype: list[dict]
+    """
+    data = response.json()
+    results = data.get('results', {})
+    records = results.get('records', [])
+    return records
+
+
+def token_expired(token):
+    """Return True if the token provided is expired, otherwise False.
+
+    :param token: The token to validate
+    :type token: str
+    :returns: Token expiration status
+    :rtpe: bool
+    """
+    from datetime import datetime
+    import jwt
+    try:
+        token_params = jwt.decode(token, options={"verify_signature": False})
+        expires = token_params.get('exp', 0)
+    except:
+        expires = -1
+    if expires <= datetime.now().timestamp():
+        return True
+    return False
+
+def get_token(scope='read', kfile=None):
+    """Return a foxden token with the requested scope.
+
+    :param scope: Token scope
+    :type scope: Literal['read', 'write', 'delete']
+    :param kfile: Name of file containing a valid kerberos ticket,
+        defaults to None
+    :type kfile: str, optional
+    :returns: Foxden token
+    :rtype: str
+    """
+    import os
+
+    if scope.lower() == 'read':
+        env_var = 'FOXDEN_TOKEN'
+    elif scope.lower == 'write':
+        env_var = 'FOXDEN_WRITE_TOKEN'
+    elif scope.lower == 'delete':
+        env_var = 'FOXDEN_DELETE_TOKEN'
+    else:
+        raise ValueError('scope must be one of "read", "write", or "delete".')
+
+    # First, try getting valid token from environment variable
+    if env_var in os.environ:
+        token = os.environ[env_var]
+        if not token_expired(token):
+            return token
+
+    # If environment variable doesn't have a valid token, try getting
+    # it from the ~/.foxden.*.token file
+    token_file = f'{os.environ.get("HOME")}/.foxden.{scope}.token'
+    if os.path.isfile(token_file):
+        with open(token_file) as inf:
+            token = inf.read()
+        if not token_expired(token):
+            return token
+
+    # If other locations did not have a valid token, create one.
+    return create_token(scope=scope, kfile=kfile)
+
+def create_token(scope='read', kfile=None):
+    """Run the `foxden token create` command to get a foxden token.
+
+    :param scope:
+    :type scope: Literal['read', 'write', 'delete']
+    :param kfile: Name of file containing a valid kerberos ticket,
+        defaults to None
+    :type kfile: str, optional
+    :returns: None
+    """
+    from re import search
+
+    if scope.lower() == 'read':
+        scope_param = ''
+    elif scope.lower == 'write':
+        scope_param = 'write'
+    elif scope.lower == 'delete':
+        scope_param = 'delete'
+    else:
+        raise ValueError('scope must be one of "read", "write", or "delete".')
+
+    foxden_create_cmd = f'foxden token create {scope_param}'
+    if kfile:
+        foxden_create_cmd += f' --kfile={kfile}'
+    with os.popen(foxden_create_cmd, 'r') as pipe:
+        out = pipe.read()
+    if not len(out) == 0:
+        token = search(r'(?P<token>[\S]+)').groups('token')
+    else:
+        foxden_view_cmd = f'foxden token view'
+        with os.popen(foxden_view_cmd, 'r') as pipe:
+            out = pipe.read()
+        token = search(r'AccessToken  :  (?P<token>[\S]+)',
+                       out).groups('token')[0]
+    return token
