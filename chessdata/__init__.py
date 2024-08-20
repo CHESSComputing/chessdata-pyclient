@@ -156,7 +156,7 @@ def create_token(scope='read', kfile=None):
     with os.popen(foxden_create_cmd, 'r') as pipe:
         out = pipe.read()
     if not len(out) == 0:
-        token = search(r'(?P<token>[\S]+)').groups('token')
+        token = search(r'(?P<token>[\S]+)', out).groups('token')
     else:
         foxden_view_cmd = f'foxden token view'
         with os.popen(foxden_view_cmd, 'r') as pipe:
