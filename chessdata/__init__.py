@@ -91,7 +91,7 @@ def token_expired(token):
         return True
     return False
 
-def get_token(scope='read', kfile=None):
+def get_token(scope='read', kfile=None, create=True):
     """Return a foxden token with the requested scope.
 
     :param scope: Token scope
@@ -103,12 +103,11 @@ def get_token(scope='read', kfile=None):
     :rtype: str
     """
     import os
-
     if scope.lower() == 'read':
         env_var = 'FOXDEN_TOKEN'
-    elif scope.lower == 'write':
+    elif scope.lower() == 'write':
         env_var = 'FOXDEN_WRITE_TOKEN'
-    elif scope.lower == 'delete':
+    elif scope.lower() == 'delete':
         env_var = 'FOXDEN_DELETE_TOKEN'
     else:
         raise ValueError('scope must be one of "read", "write", or "delete".')
@@ -129,7 +128,10 @@ def get_token(scope='read', kfile=None):
             return token
 
     # If other locations did not have a valid token, create one.
-    return create_token(scope=scope, kfile=kfile)
+    if create:
+        return create_token(scope=scope, kfile=kfile)
+
+    return None
 
 def create_token(scope='read', kfile=None):
     """Run the `foxden token create` command to get a foxden token.
@@ -145,9 +147,9 @@ def create_token(scope='read', kfile=None):
 
     if scope.lower() == 'read':
         scope_param = ''
-    elif scope.lower == 'write':
+    elif scope.lower() == 'write':
         scope_param = 'write'
-    elif scope.lower == 'delete':
+    elif scope.lower() == 'delete':
         scope_param = 'delete'
     else:
         raise ValueError('scope must be one of "read", "write", or "delete".')
@@ -157,12 +159,4 @@ def create_token(scope='read', kfile=None):
         foxden_create_cmd += f' --kfile={kfile}'
     with os.popen(foxden_create_cmd, 'r') as pipe:
         out = pipe.read()
-    if not len(out) == 0:
-        token = search(r'(?P<token>[\S]+)', out).groups('token')
-    else:
-        foxden_view_cmd = f'foxden token view'
-        with os.popen(foxden_view_cmd, 'r') as pipe:
-            out = pipe.read()
-        token = search(r'AccessToken  :  (?P<token>[\S]+)',
-                       out).groups('token')[0]
-    return token
+    return get_token(scope=scope, kfile=kfile, create=False)
