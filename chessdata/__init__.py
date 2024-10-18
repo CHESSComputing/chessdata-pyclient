@@ -65,9 +65,11 @@ def foxden_response_records(response):
     :rtype: list[dict]
     """
     data = response.json()
-    results = data.get('results', {})
-    records = results.get('records', [])
-    return records
+    if isinstance(data, dict):
+        results = data.get('results', {})
+        records = results.get('records', [])
+        return records
+    return data
 
 
 def token_expired(token):
