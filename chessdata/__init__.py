@@ -43,6 +43,20 @@ def query(query, kfile=None, url='https://foxden-meta.classe.cornell.edu:8300'):
     )
     return foxden_response_records(resp)
 
+def add(data, schema=None, kfile=None, url='https://foxden-meta.classe.cornell.edu:8300'):
+    """"""
+    if schema:
+        data = {'Record': data, 'Schema': schema}
+    resp = requests.post(
+        f'{url}',
+        data=json.dumps(data),
+        headers={
+            'Authorization': f'Bearer {get_token(scope="write", kfile=kfile)}',
+            'Content-Type': 'application/json'
+        }
+    )
+    return resp.json()
+
 def foxden_request_data(query):
     """Return the data to include in the body of an HTTP request to
     query a foxden service.
